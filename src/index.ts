@@ -6,7 +6,35 @@ import { convertObj } from 'swagger2openapi'
 import { Parser } from './parse'
 import { renderOperation } from './render'
 
-export async function swaggerToTypeScript(document: OpenAPI.Document<{}>) {
+interface OpenAPITypeConversion {
+  boolean?: { default?: string }
+  number?: {
+    default?: string
+    float?: string
+    double?: string
+  }
+  integer?: {
+    default?: string
+    int32?: string
+    int64?: string
+  }
+  string?: {
+    default?: string
+    date?: string
+    'date-time'?: string
+    password?: string
+    binary?: string
+    byte?: string
+    [key: string]: any
+  }
+}
+
+export async function swaggerToTypeScript(
+  document: OpenAPI.Document<{}>,
+  options?: {
+    openAPITypes?: OpenAPITypeConversion
+  }
+) {
   const parser = new Parser()
 
   if ((document as any).swagger?.startsWith('2.')) {
@@ -24,6 +52,8 @@ export async function swaggerToTypeScript(document: OpenAPI.Document<{}>) {
       import type { AxiosResponse, AxiosRequestConfig, AxiosInstance } from 'axios'
       type PickData<T> = T extends { data?: any } ? T['data'] : any
       const interpolatePath = (str: string, values: any) => str.replace(/{([^{}]+)}/g, (_, g1) => values[g1])
+
+      ${renderTypeConversion(options?.openAPITypes)}
     `,
   ]
 
@@ -112,4 +142,120 @@ function fixMissingRef(obj: any, root = obj) {
   })
 
   return obj
+}
+
+function renderTypeConversion(opt?: OpenAPITypeConversion) {
+  const getBooleanType = (key: string, defaults = 'boolean') =>
+    _.get(opt, ['boolean', key], defaults)
+  const getNumberType = (key: string, defaults = 'number') =>
+    _.get(opt, ['number', key], defaults)
+  const getIntType = (key: string, defaults = 'number') =>
+    _.get(opt, ['integer', key], defaults)
+  const getStringType = (key: string, defaults = 'string') =>
+    _.get(opt, ['string', key], defaults)
+
+  const stringFormats = _.without(
+    _.keys(opt?.string),
+    ...['default', 'date', 'date-time', 'password', 'binary', 'byte']
+  )
+
+  return `
+      type $$Boolean = {
+        /** @SEE https://swagger.io/docs/specification/data-models/data-types/#boolean */
+        ['default']: ${getBooleanType('default')}
+      }
+
+      type $$Number = {
+        /**
+         * Any numbers.
+         * @SEE https://swagger.io/docs/specification/data-models/data-types/#numbers
+         */
+        ['default']: ${getNumberType('default')}
+        /**
+         * Floating-point numbers.
+         * @SEE https://swagger.io/docs/specification/data-models/data-types/#numbers
+         */
+        ['float']: ${getNumberType('float')}
+        /**
+         * Floating-point numbers with double precision.
+         * @SEE https://swagger.io/docs/specification/data-models/data-types/#numbers
+         */
+        ['double']: ${getNumberType('double')}
+      }
+
+      type $$Integer = {
+        /**
+         * Integer numbers.
+         * @SEE https://swagger.io/docs/specification/data-models/data-types/#numbers
+         */
+        ['default']: ${getIntType('default')}
+        /**
+         * Signed 32-bit integers (commonly used integer type).
+         * @SEE https://swagger.io/docs/specification/data-models/data-types/#numbers
+         */
+        ['int32']: ${getIntType('int32')}
+        /**
+         * Signed 64-bit integers (long type).
+         * @SEE https://swagger.io/docs/specification/data-models/data-types/#numbers
+         */
+        ['int64']: ${getIntType('int64', 'string')}
+      }
+
+      // https://swagger.io/docs/specification/data-models/data-types/#string
+      type $String = {
+        /**
+         * @SEE https://swagger.io/docs/specification/data-models/data-types/#string
+         */
+        ['default']: ${getStringType('default')}
+        /**
+         * @SEE https://swagger.io/docs/specification/data-models/data-types/#string
+         */
+        ['date']: ${getStringType('date')}
+        /**
+         * @SEE https://swagger.io/docs/specification/data-models/data-types/#string
+         */
+        ['date-time']: ${getStringType('date-time')}
+        /**
+         * a hint to UIs to mask the input
+         * @SEE https://swagger.io/docs/specification/data-models/data-types/#string
+         */
+        ['password']: ${getStringType('password')}
+        /**
+         * binary file contents
+         * @SEE https://swagger.io/docs/specification/data-models/data-types/#file
+         */
+        ['binary']: ${getStringType('binary', 'File')}
+        /**
+         * 通常代表 base64-encoded file contents
+         * 但是实际使用中貌似也有例外
+         * @SEE https://swagger.io/docs/specification/data-models/data-types/#file
+         */
+        ['byte']: ${getStringType('byte')}
+
+        ${stringFormats.map((key) => `['${key}']: ${getStringType(key)};`).join('\n')}
+      }
+    
+
+      type $Get<T extends { default: any; [k: string]: any }, K extends string> = [K] extends [
+        keyof T,
+      ]
+        ? T[K]
+        : T['default']
+
+      type __GetType<
+        // https://cswr.github.io/JsonSchema/spec/basic_types/
+        // https://swagger.io/docs/specification/data-models/data-types/
+        Type extends 'string' | 'number' | 'integer' | 'boolean',
+        Fmt extends string = 'default',
+      > = [Type] extends ['number']
+        ? $Get<$$Number, Fmt>
+        : [Type] extends ['integer']
+        ? $Get<$$Integer, Fmt>
+        : [Type] extends ['boolean']
+        ? $Get<$$Boolean, Fmt>
+        : [Type] extends ['string']
+        ? $Get<$String, Fmt>
+        : never
+        
+  `
 }

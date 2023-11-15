@@ -44,12 +44,19 @@ export async function renderOperation(operation: Operation) {
   const simplePathArgs = op.params.path?.isSimple
     ? pathParams
         ?.map(({ required, schema, name }) => {
-          const isI64 = schema?.format === 'int64'
-          const realType = schema?.type !== 'string' && !isI64 ? 'number' : 'string'
+          const fmt = schema?.format
+          const type = schema?.type
+          const realType = `__GetType<'${type}', '${fmt || ''}'>`
+          const comments = [
+            `/**`,
+            type ? ` * @swaggerType ${type}` : '',
+            fmt ? ` * @format ${fmt}` : '',
+            ' */',
+          ]
+            .filter(Boolean)
+            .join('\n')
 
-          return `${isI64 ? '/** @format int64 */' : ''} ${name}: ${realType}${
-            !required ? '| undefined' : ''
-          }`
+          return `${comments} ${name}: ${realType}${!required ? '| undefined' : ''}`
         })
         .join(',')
     : ''
@@ -232,15 +239,24 @@ function processSchemaObject(
     }
   }
 
-  // int64 处理
-  const type2 = type === 'integer' && format === 'int64' ? 'string' : type
-
-  return {
+  const result = {
     ...schema,
-    type: type2,
+    type,
     title,
-    description: [schema.description || '', format ? `@format ${format}` : '']
+    description: [
+      schema.description || '',
+      type ? `@swaggerType ${type}` : '',
+      format ? `@format ${format}` : '',
+    ]
       .join('\n')
       .trim(),
   }
+
+  if (type) {
+    return {
+      ...result,
+      tsType: `__GetType<'${type}', '${format || '-'}'>`,
+    }
+  }
+  return result
 }
