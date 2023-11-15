@@ -162,7 +162,7 @@ function preprocessOperation(operation: Operation) {
             ),
           }
         : undefined,
-      PathParams: queryParams.length
+      PathParams: pathParams.length
         ? {
             type: 'object',
             properties: fromPairs(
