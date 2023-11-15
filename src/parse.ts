@@ -69,7 +69,21 @@ export class Parser {
           bodyContent?.['multipart/form-data'] ||
           _.values(bodyContent)[0]
         : null
-      const isMultipart = Boolean(bodyContent?.['multipart/form-data'])
+      let isMultipart = Boolean(bodyContent?.['multipart/form-data'])
+
+      if (isMultipart) {
+        return [mediaObject, isMultipart] as const
+      }
+
+      const schema = mediaObject?.schema as OpenAPIV3.SchemaObject | null
+      // NOTE
+      // fix real cases where `type` is not marked as `multipart/form-data`,
+      // but some parameter is actually `binary`
+      if (schema && schema.properties) {
+        isMultipart = _.values(schema.properties)
+          .map((el) => el as OpenAPIV3.SchemaObject)
+          .some((el) => el.type === 'string' && el.format === 'binary')
+      }
 
       return [mediaObject, isMultipart] as const
     })()
