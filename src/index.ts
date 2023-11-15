@@ -1,15 +1,19 @@
+import _ from 'lodash'
+import { OpenAPI, OpenAPIV2, OpenAPIV3 } from 'openapi-types'
 import prettier from 'prettier'
 import { convertObj } from 'swagger2openapi'
 
 import { Parser } from './parse'
 import { renderOperation } from './render'
-import { OpenAPI, OpenAPIV2, OpenAPIV3 } from 'openapi-types'
 
 export async function swaggerToTypeScript(document: OpenAPI.Document<{}>) {
   const parser = new Parser()
 
   if ((document as any).swagger?.startsWith('2.')) {
-    await parser.init((await convertObj(document as OpenAPIV2.Document<{}>, {})).openapi)
+    fixMissingRef(document)
+    await parser.init(
+      (await convertObj(document as OpenAPIV2.Document<{}>, { resolve: false })).openapi
+    )
   } else {
     await parser.init(document as OpenAPIV3.Document<{}>)
   }
@@ -90,4 +94,22 @@ export async function swaggerToTypeScript(document: OpenAPI.Document<{}>) {
   })
 
   return fullCode
+}
+
+function fixMissingRef(obj: any, root = obj) {
+  _.forEach(obj, (value) => {
+    if (value !== null && typeof value === 'object') {
+      // 删除无效引用
+      if ('$ref' in value) {
+        if (!_.get(root, value.$ref.replace('#/', '').split('/'))) {
+          delete value.$ref
+          delete value.originalRef
+        }
+      } else {
+        _.forEach(value, (val) => fixMissingRef(val, root))
+      }
+    }
+  })
+
+  return obj
 }
