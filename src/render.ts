@@ -82,7 +82,9 @@ export async function renderOperation(operation: Operation) {
     })
   `)
 
-  const interfaceCode = await compileToTs(op.helperSchema, '__BaseTypes__')
+  const interfaceCode = (await compileToTs(op.helperSchema, '__BaseTypes__'))
+    .replace(/([\s])export[\s]+(type|enum|interface)/g, '$1$2')
+    .replace(/\/\*\*\s+\*\s*([^\n]+)\s+\*\//g, '/** $1 */')
 
   return `
     /**
@@ -93,7 +95,7 @@ export async function renderOperation(operation: Operation) {
       const __path = "${requestLine}" as const;
       const __url = __path.slice(${method.length + 1});
 
-      ${interfaceCode.replace(/([\s])export[\s]+(type|enum|interface)/g, '$1$2')}
+      ${interfaceCode}
 
       type __Config = ${configType};
       const __request = ${fnResult};
