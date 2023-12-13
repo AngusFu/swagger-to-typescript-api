@@ -118,7 +118,7 @@ export async function swaggerToTypeScript(
     printWidth: 120,
     proseWrap: 'never',
     singleQuote: true,
-    semi: false,
+    semi: true,
     trailingComma: 'es5',
     endOfLine: 'auto',
   })
