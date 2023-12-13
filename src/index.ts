@@ -1,4 +1,5 @@
 import _ from 'lodash'
+import ts from 'typescript'
 import { OpenAPI, OpenAPIV2, OpenAPIV3 } from 'openapi-types'
 import prettier from 'prettier'
 import { convertObj } from 'swagger2openapi'
@@ -123,7 +124,49 @@ export async function swaggerToTypeScript(
     endOfLine: 'auto',
   })
 
-  return fullCode
+  return fixTsType(fullCode)
+}
+
+// relate issue:  https://github.com/bcherny/json-schema-to-typescript/issues/201
+function fixTsType(code: string) {
+  const sourceFile = ts.createSourceFile('demo.ts', code, ts.ScriptTarget.Latest)
+  const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed })
+  const file = ts.transform([sourceFile], [tsTransformer()]).transformed[0]
+
+  return printer.printNode(ts.EmitHint.Unspecified, file, file)
+}
+
+function tsTransformer() {
+  return (context: ts.TransformationContext) => {
+    return (sourceFile: ts.SourceFile) => {
+      const visitor = (node: ts.Node): any => {
+        if (ts.isTypeLiteralNode(node)) {
+          const indexSignatures = node.members.filter((el) =>
+            ts.isIndexSignatureDeclaration(el)
+          )
+          const propSignatures = node.members.filter((el) => ts.isPropertySignature(el))
+
+          if (indexSignatures.length && propSignatures.length) {
+            const n1 = context.factory.updateTypeLiteralNode(
+              node,
+              // TODO would this cause any problem?
+              propSignatures as unknown as ts.NodeArray<ts.TypeElement>
+            )
+            const n2 = context.factory.createTypeLiteralNode(indexSignatures)
+
+            return context.factory.createIntersectionTypeNode([
+              ts.visitNode(n1, visitor),
+              ts.visitNode(n2, visitor),
+            ])
+          }
+        }
+
+        return ts.visitEachChild(node, visitor, context)
+      }
+
+      return ts.visitNode(sourceFile, visitor)
+    }
+  }
 }
 
 function fixMissingRef(obj: any, root = obj) {
