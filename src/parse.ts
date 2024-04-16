@@ -33,11 +33,11 @@ function resolveCircular(obj: any, seen: WeakSet<any>) {
 export class Parser {
   document: OpenAPIV3.Document | null = null
   parser = new SwaggerParser()
+  refs: SwaggerParser.$Refs | null = null
 
   async init(api: OpenAPIV3.Document<any>) {
-    const doc = await SwaggerParser.dereference(api)
-
-    this.document = resolveCircular(doc, new WeakSet()) as OpenAPIV3.Document<{}>
+    this.refs = await SwaggerParser.resolve(api)
+    this.document = resolveCircular(api, new WeakSet()) as OpenAPIV3.Document<{}>
   }
 
   public getProcessedOperationObjects() {
@@ -63,7 +63,8 @@ export class Parser {
     { url, method }: { url: string; method: string }
   ) {
     const [requestBody, isMultipart] = (() => {
-      const bodyContent = (item.requestBody as OpenAPIV3.RequestBodyObject)?.content
+      const reqBody = item.requestBody && this.resolveSimpleRef(item.requestBody)
+      const bodyContent = reqBody?.content
       const mediaObject = bodyContent
         ? bodyContent?.['application/json'] ||
           bodyContent?.['multipart/form-data'] ||
@@ -112,11 +113,23 @@ export class Parser {
 
   private processParametersObject(parameters: OpenAPIV3.OperationObject['parameters']) {
     return parameters
-      ?.map((el) => el! as OpenAPIV3.ParameterObject)
+      ?.map((el) => this.resolveSimpleRef(el))
+      .filter(Boolean)
       .sort((a, b) => a.in.localeCompare(b.in))
       .map((param) => ({
         ...param,
         schema: param.schema as OpenAPIV3.SchemaObject | undefined,
       }))
   }
+
+  private resolveSimpleRef<T extends object>(o: T | OpenAPIV3.ReferenceObject) {
+    if (o && '$ref' in o) {
+      if (this.refs!.exists(o.$ref)) {
+        this.refs!.get(o.$ref) as OpenAPIV3.ParameterObject
+      }
+      return null as never
+    }
+    return o as T
+  }
 }
+

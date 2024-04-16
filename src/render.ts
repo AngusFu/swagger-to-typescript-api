@@ -6,6 +6,19 @@ import { Parser } from './parse'
 
 type Operation = NonNullable<ReturnType<Parser['getProcessedOperationObjects']>>[number]
 
+export async function renderSchemas(components?: OpenAPIV3.ComponentsObject) {
+  if (!components) return ''
+
+  const interfaces = [] as string[]
+  for (const [k, v] of _.entries(components.schemas)) {
+    const name = _.upperFirst(_.camelCase(k))
+    interfaces.push(
+      await compileToTs(processSchemaObject(v, name), name)
+    )
+  }
+  
+  return interfaces.join('\n\n')
+}
 export async function renderOperation(operation: Operation) {
   const { method, url } = operation.__extra__
   const requestLine = `${method.toUpperCase()} ${url}`
@@ -88,7 +101,7 @@ export async function renderOperation(operation: Operation) {
       data: ${op.data?.isMultipart ? 'toFormData' : ''}(__options?.data)
     })
   `)
-
+  
   const interfaceCode = (await compileToTs(op.helperSchema, '__BaseTypes__'))
     .replace(/([\s])export[\s]+(type|enum|interface)/g, '$1$2')
     .replace(/\/\*\*\s+\*\s*([^\n]+)\s+\*\//g, '/** $1 */')
@@ -120,7 +133,7 @@ export async function renderOperation(operation: Operation) {
 function compileToTs(schema: any, name: string) {
   return compile(schema, name, {
     format: false,
-    bannerComment: undefined,
+    bannerComment: '',
     additionalProperties: false,
     declareExternallyReferenced: true,
     unreachableDefinitions: false,
@@ -216,8 +229,15 @@ function processSchemaObject(
   interfaceName: string
 ): any {
   if (!_schema) return
+  
+  if ('$ref' in _schema){
+    
+    return {
+      tsType: _.upperFirst(_.camelCase(_.last(_.split(_schema.$ref, '/')))),
+    }
+  }
 
-  const schema = _schema as OpenAPIV3.SchemaObject
+  const schema = _schema as OpenAPIV3.SchemaObject 
   const { type, format } = schema
   const title = schema.title && (interfaceName || schema.title)
 
@@ -239,7 +259,7 @@ function processSchemaObject(
     }
   }
 
-  const result = {
+  const result: OpenAPIV3.SchemaObject = {
     ...schema,
     type,
     title,

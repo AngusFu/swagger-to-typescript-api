@@ -5,7 +5,7 @@ import prettier from 'prettier'
 import { convertObj } from 'swagger2openapi'
 
 import { Parser } from './parse'
-import { renderOperation } from './render'
+import { renderOperation, renderSchemas } from './render'
 
 interface OpenAPITypeConversion {
   boolean?: { default?: string }
@@ -58,9 +58,13 @@ export async function swaggerToTypeScript(
     `,
   ]
 
+  code.push(
+    (await renderSchemas(parser.document?.components))
+  )
+
+
   const ops = parser.getProcessedOperationObjects() || []
   const tasks = ops.map((el) => () => renderOperation(el))
-
   while (tasks.length) {
     code.push(await tasks.pop()!()!)
   }
