@@ -125,7 +125,7 @@ export class Parser {
   private resolveSimpleRef<T extends object>(o: T | OpenAPIV3.ReferenceObject) {
     if (o && '$ref' in o) {
       if (this.refs!.exists(o.$ref)) {
-        this.refs!.get(o.$ref) as OpenAPIV3.ParameterObject
+        return this.refs!.get(o.$ref) as OpenAPIV3.ParameterObject
       }
       return null as never
     }
